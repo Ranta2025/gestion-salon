@@ -13,7 +13,7 @@ import 'state/clients_controller.dart';
 import 'state/dashboard_controller.dart';
 import 'state/movements_controller.dart';
 import 'state/settings_controller.dart';
-import 'ui/screens/home_shell.dart';
+import 'ui/screens/splash/splash_screen.dart';
 
 /// App composition root: repositories (plain) + controllers (notifier).
 /// Controllers are created and kicked off in main() before runApp, so
@@ -62,7 +62,7 @@ class GestionSalonApp extends StatelessWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: const HomeShell(),
+        home: const SplashScreen(),
       ),
     );
   }

@@ -7,9 +7,9 @@
     <!-- Required on Android 13+ to display notifications; requested at runtime in Dart. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="gestion_salon"
+        android:label="Gestion Salon"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"
