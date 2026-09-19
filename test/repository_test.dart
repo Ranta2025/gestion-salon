@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_salon/core/utils/date_helpers.dart';
 import 'package:gestion_salon/data/db/app_database.dart';
 import 'package:gestion_salon/data/models/models.dart';
+import 'package:gestion_salon/data/repositories/appointment_repository.dart';
 import 'package:gestion_salon/data/repositories/catalog_repository.dart';
 import 'package:gestion_salon/data/repositories/client_repository.dart';
 import 'package:gestion_salon/data/repositories/finance_repository.dart';
@@ -16,6 +17,7 @@ void main() {
   final clients = ClientRepository();
   final catalogs = CatalogRepository();
   final finance = FinanceRepository();
+  final appointments = AppointmentRepository();
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -202,6 +204,103 @@ void main() {
     expect(movement, isNotNull);
     expect(movement!.clientId, isNull);
     expect(movement.clientName, isNull);
+  });
+
+  test('inserting an appointment and reading it back preserves all fields',
+      () async {
+    final clientId = await clients.insert(
+      Client(name: 'Carla', createdAt: DateTime.now()),
+    );
+    final createdAt = DateTime(2026, 9, 19, 8);
+
+    final id = await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: DateTime(2026, 9, 25, 15, 30),
+        createdAt: createdAt,
+      ),
+    );
+
+    final saved = await appointments.byId(id);
+
+    expect(saved, isNotNull);
+    expect(saved!.clientId, clientId);
+    expect(saved.dateTime, DateTime(2026, 9, 25, 15, 30));
+    expect(saved.description, isNull);
+    expect(saved.notificationId, isNull);
+    expect(saved.createdAt, createdAt);
+    expect(saved.clientName, 'Carla');
+  });
+
+  test(
+      'upcoming returns only appointments at or after the reference time, '
+      'ordered chronologically', () async {
+    final clientId = await clients.insert(
+      Client(name: 'Diego', createdAt: DateTime.now()),
+    );
+    final reference = DateTime(2026, 9, 20, 9);
+
+    final pastId = await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: reference.subtract(const Duration(days: 1)),
+        createdAt: DateTime.now(),
+      ),
+    );
+    await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: reference.add(const Duration(days: 5)),
+        description: 'Tinte',
+        createdAt: DateTime.now(),
+      ),
+    );
+    await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: reference,
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    final result = await appointments.upcoming(from: reference);
+
+    expect(result, hasLength(2));
+    expect(
+      result.map((a) => a.dateTime),
+      [reference, reference.add(const Duration(days: 5))],
+    );
+    expect(result.every((a) => a.id != pastId), isTrue);
+  });
+
+  test(
+      'deleting a client keeps its appointments but the client join no '
+      'longer resolves', () async {
+    final clientId = await clients.insert(
+      Client(name: 'Luisa', createdAt: DateTime.now()),
+    );
+    final appointmentId = await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: DateTime(2026, 9, 21, 10),
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    await clients.delete(clientId);
+
+    // Appointment.clientId is NOT NULL (an appointment always needs a
+    // client, per product decision), so unlike Movement's optional
+    // client_id it can't be nulled out on client deletion. ClientRepository
+    // .delete only clears the link on `movements`; it never touches
+    // `appointments`, and this DB never enables `PRAGMA foreign_keys`. So
+    // the appointment row is kept unmodified — same "keep the record"
+    // precedent as movements — just with a stale client_id and a
+    // display-only clientName that degrades to null via the LEFT JOIN.
+    final appointment = await appointments.byId(appointmentId);
+    expect(appointment, isNotNull);
+    expect(appointment!.clientId, clientId);
+    expect(appointment.clientName, isNull);
   });
 
   test('date helpers produce lexicographic-sortable keys', () {

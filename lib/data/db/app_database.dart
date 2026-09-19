@@ -95,6 +95,21 @@ class AppDatabase {
     );
 
     await db.execute('''
+      CREATE TABLE appointments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id INTEGER NOT NULL REFERENCES clients(id),
+        date_time TEXT NOT NULL,
+        description TEXT,
+        notification_id INTEGER,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute(
+      'CREATE INDEX idx_appointments_date_time ON appointments(date_time)',
+    );
+
+    await db.execute('''
       CREATE TABLE cash_closes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT NOT NULL UNIQUE,

@@ -150,6 +150,72 @@ class Client {
       );
 }
 
+/// A scheduled salon appointment (client + date/time + optional note).
+///
+/// `clientName` is a join-time display field, populated by read queries,
+/// never written to the appointments table. `notificationId` is nullable:
+/// it starts unset and is populated once the OS notification for this
+/// appointment has been scheduled.
+class Appointment {
+  final int? id;
+  final int clientId;
+  final DateTime dateTime;
+  final String? description;
+  final int? notificationId;
+  final DateTime createdAt;
+
+  // Display-only join field.
+  final String? clientName;
+
+  const Appointment({
+    this.id,
+    required this.clientId,
+    required this.dateTime,
+    this.description,
+    this.notificationId,
+    required this.createdAt,
+    this.clientName,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'client_id': clientId,
+        'date_time': DateHelpers.dateTimeKey(dateTime),
+        'description': description,
+        'notification_id': notificationId,
+        'created_at': DateHelpers.dateTimeKey(createdAt),
+      };
+
+  factory Appointment.fromMap(Map<String, Object?> map) => Appointment(
+        id: map['id'] as int?,
+        clientId: map['client_id'] as int,
+        dateTime: DateTime.parse(map['date_time'] as String),
+        description: map['description'] as String?,
+        notificationId: map['notification_id'] as int?,
+        createdAt: DateTime.parse(map['created_at'] as String),
+        clientName: map['client_name'] as String?,
+      );
+
+  Appointment copyWith({
+    int? id,
+    int? clientId,
+    DateTime? dateTime,
+    String? description,
+    int? notificationId,
+    DateTime? createdAt,
+    String? clientName,
+  }) =>
+      Appointment(
+        id: id ?? this.id,
+        clientId: clientId ?? this.clientId,
+        dateTime: dateTime ?? this.dateTime,
+        description: description ?? this.description,
+        notificationId: notificationId ?? this.notificationId,
+        createdAt: createdAt ?? this.createdAt,
+        clientName: clientName ?? this.clientName,
+      );
+}
+
 class ServiceItem {
   final int? id;
   final String name;
