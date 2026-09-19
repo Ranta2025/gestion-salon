@@ -7,6 +7,7 @@ import 'data/repositories/catalog_repository.dart';
 import 'data/repositories/client_repository.dart';
 import 'data/repositories/finance_repository.dart';
 import 'data/repositories/movement_repository.dart';
+import 'state/appointments_controller.dart';
 import 'state/catalog_controller.dart';
 import 'state/clients_controller.dart';
 import 'state/dashboard_controller.dart';
@@ -23,6 +24,7 @@ class GestionSalonApp extends StatelessWidget {
   final MovementsController movements;
   final ClientsController clients;
   final CatalogController catalogs;
+  final AppointmentsController appointments;
 
   const GestionSalonApp({
     super.key,
@@ -31,6 +33,7 @@ class GestionSalonApp extends StatelessWidget {
     required this.movements,
     required this.clients,
     required this.catalogs,
+    required this.appointments,
   });
 
   @override
@@ -46,6 +49,7 @@ class GestionSalonApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: movements),
         ChangeNotifierProvider.value(value: clients),
         ChangeNotifierProvider.value(value: catalogs),
+        ChangeNotifierProvider.value(value: appointments),
       ],
       child: MaterialApp(
         title: 'Gestión Salón',
