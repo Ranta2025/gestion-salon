@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../data/models/models.dart';
+import 'appointments/appointment_form_screen.dart';
 import 'catalogs/catalogs_screen.dart';
 import 'clients/clients_screen.dart';
 import 'dashboard/dashboard_screen.dart';
@@ -111,6 +112,16 @@ class _HomeShellState extends State<HomeShell> {
         title: Text(_titles[_index]),
         actions: _index == 0
             ? [
+                IconButton(
+                  tooltip: 'Agendar cita',
+                  icon: const Icon(Icons.event_available_outlined),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AppointmentFormScreen(),
+                      fullscreenDialog: true,
+                    ),
+                  ),
+                ),
                 IconButton(
                   tooltip: 'Catálogos',
                   icon: const Icon(Icons.dashboard_customize_outlined),
