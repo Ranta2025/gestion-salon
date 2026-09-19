@@ -78,10 +78,8 @@ work is unrelated to appointment scheduling.
   in `lib/app.dart` (replacing the direct `HomeShell()`).
 - [x] **T4** — Fix `android:label` in
   `android/app/src/main/AndroidManifest.xml` to `"Gestion Salon"`.
-- [ ] **T5** — Clean up: remove the leftover `assets/icon/app_icon.png`
-  the two generator packages leave as a Flutter asset only if actually
-  needed by the splash widget (keep it — it IS needed there); otherwise no
-  extra cleanup expected.
+- [x] **T5** — Clean up: `assets/icon/app_icon.png` kept (needed by the
+  splash widget). No extra cleanup required.
 
 ## Verification (per task)
 - `flutter analyze`
@@ -117,7 +115,7 @@ work is unrelated to appointment scheduling.
   authorization.
 
 ## Outcome
-All 4 tasks done. Icon, native splash, and branded loading screen are in
+All 5 tasks done. Icon, native splash, and branded loading screen are in
 place; Android display name fixed. **Not yet verified**: no real
 `flutter build apk`/`flutter build ios` has been run for this branch —
 the user should authorize that explicitly before considering this
@@ -125,3 +123,19 @@ production-ready, since native icon/splash resource generation is exactly
 the kind of change that can silently break a native build (manifest
 merge, resource naming clashes) even when `flutter analyze`/`flutter test`
 stay green.
+
+Gentle AI review of the full branch (73 files vs. `master`): user granted
+consent, `review-reliability` found one real CRITICAL —
+`flutter_native_splash`'s `fullscreen: true` had set
+`UIStatusBarHidden=true` on iOS with no restoration logic, hiding the
+status bar app-wide instead of only during the splash (commit `68ba1c8`
+first over-corrected this by also reverting Android's fullscreen splash
+theme and dropping `fullscreen: true` from the config entirely — the
+targeted validator correctly rejected that as out-of-scope; commit
+`e3dd5d3` re-scoped the fix to the single iOS `Info.plist` line that
+actually needed to change, keeping Android's fullscreen splash intact).
+Re-validation then hit the same `recovery_authorization_required` gate
+already seen on the `agendar-citas` branch (a maintainer-level grant the
+agent declined to self-issue) — left unacknowledged, consistent with that
+earlier precedent. `flutter analyze` clean and `flutter test` 9/9 after
+the final fix, independent of this lineage's bureaucratic state.
