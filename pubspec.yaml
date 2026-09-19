@@ -59,6 +59,8 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   sqflite_common_ffi: ^2.4.3
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -75,6 +77,8 @@ flutter:
   # assets:
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/icon/app_icon.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -101,3 +105,18 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: "launcher_icon"
+  adaptive_icon_background: "#F7F5FA"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  ios: true
+
+flutter_native_splash:
+  color: "#F7F5FA"
+  image: assets/icon/app_icon.png
+  android_12:
+    color: "#F7F5FA"
+    image: assets/icon/app_icon.png
+  fullscreen: true
