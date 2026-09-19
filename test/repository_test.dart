@@ -303,6 +303,45 @@ void main() {
     expect(appointment.clientName, isNull);
   });
 
+  test(
+      'upgrading a version-1 database adds the appointments table and '
+      'keeps existing data intact', () async {
+    // `singleInstance: false` so this doesn't collide with (or reuse) the
+    // in-memory database already opened by `setUp` at the same path.
+    final v1Db = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 1,
+        singleInstance: false,
+        onCreate: (db, _) => AppDatabase.createV1SchemaForTest(db),
+      ),
+    );
+    AppDatabase.debugSetDatabase(v1Db);
+
+    final clientId = await clients.insert(
+      Client(name: 'Existing user data', createdAt: DateTime.now()),
+    );
+
+    // Pre-migration: appointments must not exist yet on a v1 database.
+    await expectLater(
+      v1Db.query('appointments'),
+      throwsA(isA<DatabaseException>()),
+    );
+
+    await AppDatabase.upgradeSchemaForTest(v1Db, 1);
+
+    // Post-migration: the appointments table now exists and is queryable.
+    final appointmentRows = await v1Db.query('appointments');
+    expect(appointmentRows, isEmpty);
+
+    // Pre-existing v1 data survived the upgrade untouched.
+    final existingClient = await clients.byId(clientId);
+    expect(existingClient, isNotNull);
+    expect(existingClient!.name, 'Existing user data');
+
+    await v1Db.close();
+  });
+
   test('date helpers produce lexicographic-sortable keys', () {
     final a = DateTime(2026, 1, 5, 9, 30);
     final b = DateTime(2026, 1, 5, 18, 0);

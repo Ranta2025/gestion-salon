@@ -29,6 +29,22 @@ class AppDatabase {
   static Future<void> createSchemaForTest(Database db) =>
       _onCreate(db, _dbVersion);
 
+  /// Visible for testing: builds the schema of a version-1 database (i.e.
+  /// before the `appointments` table existed), so migration tests can
+  /// simulate an existing install and then exercise the real upgrade path.
+  /// Reuses [_onCreate] instead of duplicating the whole schema, then drops
+  /// what version 1 didn't have yet.
+  static Future<void> createV1SchemaForTest(Database db) async {
+    await _onCreate(db, 1);
+    await db.execute('DROP INDEX IF EXISTS idx_appointments_date_time');
+    await db.execute('DROP TABLE IF EXISTS appointments');
+  }
+
+  /// Visible for testing: exposes the real upgrade callback so tests can
+  /// verify the migration path itself instead of duplicating its logic.
+  static Future<void> upgradeSchemaForTest(Database db, int oldVersion) =>
+      _onUpgrade(db, oldVersion, _dbVersion);
+
   static Future<Database> _open() async {
     final dir = await getApplicationDocumentsDirectory();
     final path = p.join(dir.path, _dbName);

@@ -27,17 +27,30 @@ class AppointmentsController extends ChangeNotifier {
 
   Future<int> add(Appointment appointment, {required String clientName}) async {
     final id = await _repository.insert(appointment);
-    final notificationId = await _notificationService.scheduleAppointmentReminder(
-      appointmentId: id,
-      appointmentAt: appointment.dateTime,
-      clientName: clientName,
-      description: appointment.description,
-    );
-    if (notificationId != null) {
-      await _repository.update(
-        appointment.copyWith(id: id, notificationId: notificationId),
+
+    // Notification scheduling may fail (permissions denied, platform channel
+    // issues, etc. — see NotificationService/main.dart for the same failure
+    // mode). The appointment is already persisted at this point, so a
+    // scheduling failure must not propagate: losing the reminder is an
+    // acceptable degradation, losing the appointment or leaving in-memory
+    // state stale relative to the database is not.
+    try {
+      final notificationId =
+          await _notificationService.scheduleAppointmentReminder(
+        appointmentId: id,
+        appointmentAt: appointment.dateTime,
+        clientName: clientName,
+        description: appointment.description,
       );
+      if (notificationId != null) {
+        await _repository.update(
+          appointment.copyWith(id: id, notificationId: notificationId),
+        );
+      }
+    } catch (_) {
+      // No reminder will fire for this appointment, but it stays saved.
     }
+
     await refresh();
     return id;
   }
