@@ -10,7 +10,7 @@ class AppDatabase {
   AppDatabase._();
 
   static const String _dbName = 'gestion_salon.db';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 2;
 
   static Database? _instance;
 
@@ -36,7 +36,28 @@ class AppDatabase {
       path,
       version: _dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  /// Existing installs created before the `appointments` table (version 1)
+  /// need it added explicitly — `onCreate` only runs for brand-new databases.
+  static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE appointments(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id INTEGER NOT NULL REFERENCES clients(id),
+          date_time TEXT NOT NULL,
+          description TEXT,
+          notification_id INTEGER,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX idx_appointments_date_time ON appointments(date_time)',
+      );
+    }
   }
 
   static Future<void> _onCreate(Database db, int version) async {
