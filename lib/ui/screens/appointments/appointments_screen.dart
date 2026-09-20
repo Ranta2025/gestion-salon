@@ -113,7 +113,12 @@ class AppointmentsScreen extends StatelessWidget {
 
     switch (action) {
       case _AppointmentAction.complete:
-        await controller.complete(id);
+        // TODO(T3): replace with the real amount-entry dialog (task
+        // citas-editar-y-cobro T3). 0.01 is a placeholder only — it's the
+        // smallest value that satisfies `movements.amount CHECK(amount >
+        // 0)`, so the flow keeps working (and inserts a real, if wrong,
+        // Movement) until T3 wires up the actual amount entry.
+        await controller.complete(id, amountCharged: 0.01);
         break;
       case _AppointmentAction.cancel:
         await controller.cancel(id);

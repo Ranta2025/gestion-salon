@@ -3,6 +3,7 @@ import 'package:gestion_salon/data/db/app_database.dart';
 import 'package:gestion_salon/data/models/models.dart';
 import 'package:gestion_salon/data/repositories/appointment_repository.dart';
 import 'package:gestion_salon/data/repositories/client_repository.dart';
+import 'package:gestion_salon/data/repositories/movement_repository.dart';
 import 'package:gestion_salon/services/notification_service.dart';
 import 'package:gestion_salon/state/appointments_controller.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -45,10 +46,21 @@ class _FakeNotificationService extends NotificationService {
   }
 }
 
+/// A [MovementRepository] whose insert always throws, simulating a real
+/// persistence failure — used to prove that a failed charge insert must not
+/// leave the appointment marked as completed.
+class _ThrowingMovementRepository extends MovementRepository {
+  @override
+  Future<int> insert(Movement movement) async {
+    throw Exception('disk failure: could not insert movement');
+  }
+}
+
 void main() {
   late Database db;
   final repository = AppointmentRepository();
   final clients = ClientRepository();
+  final movements = MovementRepository();
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -174,7 +186,7 @@ void main() {
     expect(beforeComplete!.notificationId, 999);
     expect(controller.upcoming.any((a) => a.id == id), isTrue);
 
-    await controller.complete(id);
+    await controller.complete(id, amountCharged: 1500);
 
     final persisted = await repository.byId(id);
     expect(persisted!.status, AppointmentStatus.completed);
@@ -188,5 +200,222 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test(
+      'update() persists changed client, date/time and description without '
+      'touching status', () async {
+    final clientId = await clients.insert(
+      Client(name: 'Carla', createdAt: DateTime.now()),
+    );
+    final newClientId = await clients.insert(
+      Client(name: 'Diana', createdAt: DateTime.now()),
+    );
+    final controller = AppointmentsController(
+      repository: repository,
+      notificationService: _FakeNotificationService(),
+    );
+
+    final originalDate = DateTime.now().add(const Duration(days: 3));
+    final id = await controller.add(
+      Appointment(
+        clientId: clientId,
+        dateTime: originalDate,
+        description: 'Corte',
+        createdAt: DateTime.now(),
+      ),
+      clientName: 'Carla',
+    );
+
+    final stored = (await repository.byId(id))!;
+    final newDate = originalDate.add(const Duration(days: 1));
+
+    await controller.update(
+      Appointment(
+        id: stored.id,
+        clientId: newClientId,
+        dateTime: newDate,
+        description: 'Corte y color',
+        createdAt: stored.createdAt,
+      ),
+      clientName: 'Diana',
+    );
+
+    final persisted = await repository.byId(id);
+    expect(persisted!.clientId, newClientId);
+    expect(persisted.description, 'Corte y color');
+    expect(persisted.status, AppointmentStatus.scheduled);
+    expect(
+      persisted.dateTime.difference(newDate).inSeconds.abs(),
+      lessThan(1),
+    );
+  });
+
+  test(
+      'update() changing dateTime on an appointment with a live reminder '
+      'cancels the old reminder and reschedules a new one', () async {
+    final clientId = await clients.insert(
+      Client(name: 'Elena', createdAt: DateTime.now()),
+    );
+    final notificationService = _FakeNotificationService();
+    final controller = AppointmentsController(
+      repository: repository,
+      notificationService: notificationService,
+    );
+
+    final originalDate = DateTime.now().add(const Duration(days: 3));
+    final id = await controller.add(
+      Appointment(
+        clientId: clientId,
+        dateTime: originalDate,
+        createdAt: DateTime.now(),
+      ),
+      clientName: 'Elena',
+    );
+
+    final stored = (await repository.byId(id))!;
+    expect(stored.notificationId, 999);
+
+    final newDate = originalDate.add(const Duration(days: 2));
+    await controller.update(
+      Appointment(
+        id: stored.id,
+        clientId: clientId,
+        dateTime: newDate,
+        createdAt: stored.createdAt,
+      ),
+      clientName: 'Elena',
+    );
+
+    expect(notificationService.cancelledIds, contains(999));
+    final persisted = await repository.byId(id);
+    expect(persisted!.notificationId, 999);
+    expect(
+      persisted.dateTime.difference(newDate).inSeconds.abs(),
+      lessThan(1),
+    );
+  });
+
+  test(
+      'update() leaves notificationId untouched when dateTime does not '
+      'change', () async {
+    final clientId = await clients.insert(
+      Client(name: 'Flor', createdAt: DateTime.now()),
+    );
+    final notificationService = _FakeNotificationService();
+    final controller = AppointmentsController(
+      repository: repository,
+      notificationService: notificationService,
+    );
+
+    final date = DateTime.now().add(const Duration(days: 3));
+    final id = await controller.add(
+      Appointment(
+        clientId: clientId,
+        dateTime: date,
+        createdAt: DateTime.now(),
+      ),
+      clientName: 'Flor',
+    );
+
+    final stored = (await repository.byId(id))!;
+    expect(stored.notificationId, 999);
+
+    await controller.update(
+      Appointment(
+        id: stored.id,
+        clientId: clientId,
+        dateTime: stored.dateTime,
+        description: 'Retoque',
+        createdAt: stored.createdAt,
+      ),
+      clientName: 'Flor',
+    );
+
+    expect(notificationService.cancelledIds, isEmpty);
+    final persisted = await repository.byId(id);
+    expect(persisted!.notificationId, 999);
+    expect(persisted.description, 'Retoque');
+  });
+
+  test(
+      'complete(amountCharged:) inserts exactly one income Movement with the '
+      'right amount/clientId/date and marks the appointment completed',
+      () async {
+    final clientId = await clients.insert(
+      Client(name: 'Gaby', createdAt: DateTime.now()),
+    );
+    final notificationService = _FakeNotificationService();
+    final controller = AppointmentsController(
+      repository: repository,
+      notificationService: notificationService,
+      movementRepository: movements,
+    );
+
+    final appointmentDate = DateTime.now().add(const Duration(days: 1));
+    final id = await controller.add(
+      Appointment(
+        clientId: clientId,
+        dateTime: appointmentDate,
+        description: 'Corte y color',
+        createdAt: DateTime.now(),
+      ),
+      clientName: 'Gaby',
+    );
+
+    final before = await movements.query();
+    expect(before, isEmpty);
+
+    await controller.complete(id, amountCharged: 2500);
+
+    final persisted = await repository.byId(id);
+    expect(persisted!.status, AppointmentStatus.completed);
+    expect(persisted.notificationId, isNull);
+    expect(notificationService.cancelledIds, contains(999));
+
+    final createdMovements = await movements.query();
+    expect(createdMovements, hasLength(1));
+    final movement = createdMovements.single;
+    expect(movement.type, MovementType.income);
+    expect(movement.amount, 2500);
+    expect(movement.clientId, clientId);
+    expect(
+      movement.date.difference(appointmentDate).inSeconds.abs(),
+      lessThan(1),
+    );
+    expect(movement.note, contains('Gaby'));
+    expect(movement.note, contains('Corte y color'));
+  });
+
+  test(
+      'complete() does not mark the appointment completed when the movement '
+      'insert fails', () async {
+    final clientId = await clients.insert(
+      Client(name: 'Hilda', createdAt: DateTime.now()),
+    );
+    final controller = AppointmentsController(
+      repository: repository,
+      notificationService: _FakeNotificationService(),
+      movementRepository: _ThrowingMovementRepository(),
+    );
+
+    final id = await controller.add(
+      Appointment(
+        clientId: clientId,
+        dateTime: DateTime.now().add(const Duration(days: 1)),
+        createdAt: DateTime.now(),
+      ),
+      clientName: 'Hilda',
+    );
+
+    await expectLater(
+      () => controller.complete(id, amountCharged: 1000),
+      throwsException,
+    );
+
+    final persisted = await repository.byId(id);
+    expect(persisted!.status, AppointmentStatus.scheduled);
+    final createdMovements = await movements.query();
+    expect(createdMovements, isEmpty);
   });
 }
