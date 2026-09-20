@@ -81,7 +81,7 @@ Branched `feature/citas-tab-historial` from `master` (which already has
 both `agendar-citas` and `app-branding` merged in).
 
 ## Tasks
-- [ ] **T1** — `Appointment.status` (`AppointmentStatus` enum:
+- [x] **T1** — `Appointment.status` (`AppointmentStatus` enum:
   `scheduled`/`cancelled`/`completed`), `_dbVersion` bump to 3 +
   `_onUpgrade` v2→v3 branch adding the `status` column (default
   `'scheduled'`), `_onCreate`'s `appointments` table gets the column +
@@ -91,20 +91,20 @@ both `agendar-citas` and `app-branding` merged in).
   `test/repository_test.dart` (RED → GREEN) with a v2→v3 migration test
   (mirroring the existing v1→v2 one) and repository tests for `all()`
   and the narrowed `upcoming()`. Route: delegated writer.
-- [ ] **T2** — `AppointmentsController`: `history` list, `cancel(id)`,
+- [x] **T2** — `AppointmentsController`: `history` list, `cancel(id)`,
   `complete(id)` (both cancel any pending notification, then persist the
   new status, then refresh both lists). TDD: extend
   `test/appointments_controller_test.dart`. Route: delegated writer.
-- [ ] **T3** — `AppointmentsScreen`
+- [x] **T3** — `AppointmentsScreen`
   (`lib/ui/screens/appointments/appointments_screen.dart`): history list
   matching `MovementsScreen`'s visual conventions (`IosCard`,
   `EmptyState`), status-gated action bottom sheet on tap, delete confirm
   dialog. Route: delegated writer.
-- [ ] **T4** — `HomeShell`: add the "Citas" tab (6th), remove the old
+- [x] **T4** — `HomeShell`: add the "Citas" tab (6th), remove the old
   AppBar icon button, extend FAB dispatch to open
   `AppointmentFormScreen` directly on the Citas tab. Route: delegated
   writer.
-- [ ] **T5** — Splash screen: taller/higher-contrast progress bar
+- [x] **T5** — Splash screen: taller/higher-contrast progress bar
   (`minHeight`), slightly longer minimum display time. Route: direct
   inline (single well-understood file, no research needed).
 
@@ -116,4 +116,56 @@ both `agendar-citas` and `app-branding` merged in).
 - T5: structural read-back only (trivial style tweak).
 
 ## Progress / evidence
-(filled in as each task lands, with commit identity)
+- **T5** done (out of order, quick independent fix). Commit `93f5e58` —
+  progress bar `minHeight: 8`, background alpha 0.25→0.4, width
+  160→180, delay 1400ms→2200ms. `flutter analyze` clean.
+- **T1** done. Commit `3e368cd` — `AppointmentStatus` enum
+  (`scheduled`/`cancelled`/`completed`, `AppointmentStatusX` extension
+  mirroring `MovementTypeX`), `Appointment.status` (non-nullable,
+  defaults to `scheduled` at construction, mirrors the
+  `Movement.paymentMethod` precedent). `_dbVersion` → 3, `_onCreate` gets
+  `status` + `CHECK`, new `_onUpgrade` sibling branch for
+  `oldVersion < 3` (`ALTER TABLE ... ADD COLUMN`, no `CHECK` — intentional
+  asymmetry, Dart-level `fromDb` validation is the safety net there).
+  `AppointmentRepository.all()` (full history, newest first) +
+  `upcoming()` narrowed to `status = 'scheduled'`. TDD: RED (5 compile
+  errors, all expected) → GREEN (16/16 in `repository_test.dart`, 24/24
+  full suite). Clean `flutter analyze`.
+- **T2** done. Commit `ba0c13d` — `history` list on the controller,
+  `refresh()` loads both lists; `cancel(id)`/`complete(id)` via a
+  private `_setStatus` helper (best-effort notification cancel,
+  persist new status). `Appointment.copyWith` turned out to be the naive
+  `x ?? this.x` pattern (no sentinel), which can't clear `notificationId`
+  to `null` — worked around by building the updated `Appointment`
+  directly off the public const constructor instead of `copyWith`,
+  documented inline. TDD: RED (4 compile errors) → GREEN (3/3 in
+  `appointments_controller_test.dart`, 26/26 full suite). Clean
+  `flutter analyze`.
+- **T3** done. Commit `d5bafd3` — `AppointmentsScreen`: history list
+  (`controller.history`, newest-first), status badge
+  (`scheduled`→`info`, `completed`→`incomeDeep`, `cancelled`→`expenseDeep`),
+  tap opens a `showModalBottomSheet` matching `_quickAdd`'s pattern with
+  status-gated actions (complete/cancel only when `scheduled`, delete
+  always available behind an `AlertDialog` confirm). Null `clientName`
+  (deleted client) falls back to "Cliente eliminado". No own
+  `Scaffold`/FAB (tab content; FAB wiring is T4). `flutter analyze`
+  clean, 26/26 tests unaffected. Structural read-back done (no
+  widget-test infra in this project).
+- **T4** done — feature complete. Commit `3aa4fe1` — tab order Inicio,
+  Movimientos, Clientes, Reportes, **Citas** (index 4,
+  `Icons.event_available_outlined`), Ajustes; removed the old "Agendar
+  cita" AppBar icon button ("Catálogos" untouched); FAB now dispatches
+  by tab (`_index<=1`→quick-add sheet, `_index==4`→push
+  `AppointmentFormScreen` directly, else hidden). No manual refresh
+  needed — `AppointmentFormScreen.add()` already refreshes the
+  controller, which `AppointmentsScreen`'s `context.watch` picks up.
+  `flutter analyze` clean, 26/26 tests unaffected.
+
+## Outcome
+All 5 tasks done. Citas is now a full bottom-nav tab with add (via FAB),
+history (all appointments, newest-first, status badge), cancel, mark as
+done, and delete-from-history — matching the existing design system
+throughout. Splash screen's loading bar is now clearly visible with a
+longer minimum display time.
+**Not yet verified**: no real native build has been run on this branch
+either — same caveat as the other two features.
