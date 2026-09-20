@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/models.dart';
 import 'appointments/appointment_form_screen.dart';
+import 'appointments/appointments_screen.dart';
 import 'catalogs/catalogs_screen.dart';
 import 'clients/clients_screen.dart';
 import 'dashboard/dashboard_screen.dart';
@@ -27,6 +28,7 @@ class _HomeShellState extends State<HomeShell> {
     'Movimientos',
     'Clientes',
     'Reportes',
+    'Citas',
     'Ajustes',
   ];
 
@@ -35,6 +37,7 @@ class _HomeShellState extends State<HomeShell> {
     MovementsScreen(),
     ClientsScreen(),
     ReportsScreen(),
+    AppointmentsScreen(),
     SettingsScreen(),
   ];
 
@@ -105,6 +108,33 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  Future<void> _addAppointment() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const AppointmentFormScreen(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
+  Widget? _buildFab() {
+    if (_index <= 1) {
+      return FloatingActionButton(
+        onPressed: _quickAdd,
+        tooltip: 'Agregar movimiento',
+        child: const Icon(Icons.add, size: 28),
+      );
+    }
+    if (_index == 4) {
+      return FloatingActionButton(
+        onPressed: _addAppointment,
+        tooltip: 'Agendar cita',
+        child: const Icon(Icons.add, size: 28),
+      );
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -112,16 +142,6 @@ class _HomeShellState extends State<HomeShell> {
         title: Text(_titles[_index]),
         actions: _index == 0
             ? [
-                IconButton(
-                  tooltip: 'Agendar cita',
-                  icon: const Icon(Icons.event_available_outlined),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const AppointmentFormScreen(),
-                      fullscreenDialog: true,
-                    ),
-                  ),
-                ),
                 IconButton(
                   tooltip: 'Catálogos',
                   icon: const Icon(Icons.dashboard_customize_outlined),
@@ -135,13 +155,7 @@ class _HomeShellState extends State<HomeShell> {
             : null,
       ),
       body: IndexedStack(index: _index, children: _screens),
-      floatingActionButton: _index <= 1
-          ? FloatingActionButton(
-              onPressed: _quickAdd,
-              tooltip: 'Agregar movimiento',
-              child: const Icon(Icons.add, size: 28),
-            )
-          : null,
+      floatingActionButton: _buildFab(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         onTap: (i) => setState(() => _index = i),
@@ -165,6 +179,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.bar_chart_outlined),
             activeIcon: Icon(Icons.bar_chart),
             label: 'Reportes',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.event_available_outlined),
+            activeIcon: Icon(Icons.event_available),
+            label: 'Citas',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
