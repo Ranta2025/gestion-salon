@@ -79,7 +79,7 @@ Branched `feature/citas-editar-y-cobro` from `master` (has
 `agendar-citas`, `app-branding`, and `citas-tab-historial` merged in).
 
 ## Tasks
-- [ ] **T1** — `AppointmentsController`: add `update(Appointment)` (persists
+- [x] **T1** — `AppointmentsController`: add `update(Appointment)` (persists
   edited fields; if `dateTime` changed, cancel the old reminder if any
   and reschedule via the existing `NotificationService`/`shouldSchedule`
   path, same as `add()`'s scheduling logic); change `complete(id)` to
@@ -88,12 +88,12 @@ Branched `feature/citas-editar-y-cobro` from `master` (has
   `status: completed`, same reminder-cancel behavior as today). TDD:
   extend `test/appointments_controller_test.dart`. Route: delegated
   writer.
-- [ ] **T2** — `AppointmentFormScreen`: optional `Appointment? editing`
+- [x] **T2** — `AppointmentFormScreen`: optional `Appointment? editing`
   param; when set, pre-fill client/date/time/description, AppBar
   title/button copy adjusts ("Editar cita"/"Guardar cambios" vs. today's
   "Agendar Cita"/"Guardar"), save path calls `controller.update(...)`
   instead of `add(...)`. Route: delegated writer.
-- [ ] **T3** — `AppointmentsScreen`: amount-entry `AlertDialog` (Spanish
+- [x] **T3** — `AppointmentsScreen`: amount-entry `AlertDialog` (Spanish
   copy, numeric validation matching `Movement.amount`'s `CHECK(amount >
   0)` convention) wired into "Marcar como realizada"; new "Editar"
   action in the bottom sheet (status-gated to `scheduled`) pushing
@@ -105,4 +105,48 @@ Branched `feature/citas-editar-y-cobro` from `master` (has
 - T2/T3: structural read-back (no widget-test infra in this project).
 
 ## Progress / evidence
-(filled in as each task lands, with commit identity)
+- **T1** done. Commit `f1daf1f` — `AppointmentsController` gains an
+  optional `MovementRepository?` (mirrors the `NotificationService?`
+  pattern); `update(...)` compares `dateTime` via `DateHelpers
+  .dateTimeKey` (avoids false-positive reschedules from DB round-trip
+  precision loss), only cancels/reschedules the reminder when the date
+  actually changed, never touches `status`; `complete(id, {required
+  amountCharged})` inserts the income `Movement` FIRST and lets a
+  failure propagate (fails closed — an appointment never completes
+  with an unrecorded charge), then reuses `_setStatus` for the
+  reminder-cancel + `status: completed` step. TDD: RED (compile errors
+  for the new signature/method) → GREEN (8/8 in
+  `appointments_controller_test.dart`, 31/31 full suite). Clean
+  `flutter analyze`.
+  **Stopgap left for T3**: `appointments_screen.dart`'s "Marcar como
+  realizada" action currently calls `complete(id, amountCharged: 0.01)`
+  with a `TODO(T3)` — T3 must replace this with the real amount-entry
+  dialog.
+- **T2** done. Commit `b70351a` — `AppointmentFormScreen` gains
+  `editing`/`_isEditing`, matching `MovementFormScreen`'s exact edit
+  convention (title/button copy switch, `initState` pre-fill, `_save()`
+  branches `update`/`add`, preserves `id`/`notificationId`/`status`/
+  `createdAt` from the original on edit). Create-mode path untouched.
+  `flutter analyze` clean, 31/31 tests unaffected.
+- **T3** done — feature complete. Commit `b933fcf` — amount dialog
+  (`_promptAmount`, `Form`+`TextFormField`, comma→dot normalization
+  matching `MovementFormScreen`'s own amount parsing, rejects
+  empty/non-numeric/≤0 with "Ingresá un monto válido"); a failed
+  `complete()` call is caught and shown via the same `_showError`
+  SnackBar pattern already used in `AppointmentFormScreen`
+  ("No se pudo registrar el cobro. Intentá de nuevo."); stopgap
+  `0.01`/`TODO(T3)` fully removed (confirmed via grep). "Editar cita"
+  added to the action sheet, status-gated to `scheduled`, placed
+  between "Marcar como realizada" and "Cancelar cita" (constructive
+  actions before destructive ones), pushes
+  `AppointmentFormScreen(editing: appointment)`. `flutter analyze`
+  clean, 31/31 tests unaffected.
+
+## Outcome
+All 3 tasks done. Appointments can now be edited (client/date/time/
+description, with automatic reminder reschedule if the date changed),
+and marking one "realizada" requires entering the amount charged, which
+creates a linked income Movement automatically. Matches the existing
+design system throughout.
+**Not yet verified**: no real native build has been run on this branch —
+same caveat as every other feature this session.
