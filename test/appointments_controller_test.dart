@@ -23,6 +23,28 @@ class _ThrowingNotificationService extends NotificationService {
   }
 }
 
+/// A [NotificationService] whose scheduling call always succeeds with a
+/// fixed notification id, and which records every id passed to
+/// [cancelReminder] — used to verify that cancelling/completing an
+/// appointment actually cancels its live reminder.
+class _FakeNotificationService extends NotificationService {
+  final List<int> cancelledIds = [];
+
+  @override
+  Future<int?> scheduleAppointmentReminder({
+    required int appointmentId,
+    required DateTime appointmentAt,
+    required String clientName,
+    String? description,
+  }) async =>
+      999;
+
+  @override
+  Future<void> cancelReminder(int notificationId) async {
+    cancelledIds.add(notificationId);
+  }
+}
+
 void main() {
   late Database db;
   final repository = AppointmentRepository();
@@ -82,5 +104,89 @@ void main() {
     // The controller's in-memory state must reflect the persisted appointment
     // (refresh() must still run after the scheduling failure).
     expect(controller.upcoming.any((a) => a.id == id), isTrue);
+  });
+
+  test(
+      'cancel() sets status to cancelled, cancels the live reminder, clears '
+      'notificationId, and moves the appointment from upcoming to history',
+      () async {
+    final clientId = await clients.insert(
+      Client(name: 'Ana', createdAt: DateTime.now()),
+    );
+    final notificationService = _FakeNotificationService();
+    final controller = AppointmentsController(
+      repository: repository,
+      notificationService: notificationService,
+    );
+
+    final id = await controller.add(
+      Appointment(
+        clientId: clientId,
+        dateTime: DateTime.now().add(const Duration(days: 1)),
+        createdAt: DateTime.now(),
+      ),
+      clientName: 'Ana',
+    );
+
+    final beforeCancel = await repository.byId(id);
+    expect(beforeCancel!.notificationId, 999);
+    expect(controller.upcoming.any((a) => a.id == id), isTrue);
+
+    await controller.cancel(id);
+
+    final persisted = await repository.byId(id);
+    expect(persisted!.status, AppointmentStatus.cancelled);
+    expect(persisted.notificationId, isNull);
+    expect(notificationService.cancelledIds, contains(999));
+
+    expect(controller.upcoming.any((a) => a.id == id), isFalse);
+    expect(
+      controller.history.any(
+        (a) => a.id == id && a.status == AppointmentStatus.cancelled,
+      ),
+      isTrue,
+    );
+  });
+
+  test(
+      'complete() sets status to completed, cancels the live reminder, '
+      'clears notificationId, and moves the appointment from upcoming to '
+      'history', () async {
+    final clientId = await clients.insert(
+      Client(name: 'Bea', createdAt: DateTime.now()),
+    );
+    final notificationService = _FakeNotificationService();
+    final controller = AppointmentsController(
+      repository: repository,
+      notificationService: notificationService,
+    );
+
+    final id = await controller.add(
+      Appointment(
+        clientId: clientId,
+        dateTime: DateTime.now().add(const Duration(days: 1)),
+        createdAt: DateTime.now(),
+      ),
+      clientName: 'Bea',
+    );
+
+    final beforeComplete = await repository.byId(id);
+    expect(beforeComplete!.notificationId, 999);
+    expect(controller.upcoming.any((a) => a.id == id), isTrue);
+
+    await controller.complete(id);
+
+    final persisted = await repository.byId(id);
+    expect(persisted!.status, AppointmentStatus.completed);
+    expect(persisted.notificationId, isNull);
+    expect(notificationService.cancelledIds, contains(999));
+
+    expect(controller.upcoming.any((a) => a.id == id), isFalse);
+    expect(
+      controller.history.any(
+        (a) => a.id == id && a.status == AppointmentStatus.completed,
+      ),
+      isTrue,
+    );
   });
 }
