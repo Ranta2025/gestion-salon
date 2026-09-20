@@ -7,11 +7,14 @@ import '../../../data/models/models.dart';
 import '../../../state/appointments_controller.dart';
 import '../../../state/clients_controller.dart';
 
-/// Form to schedule a new appointment: pick an existing client, a date and
-/// time, and an optional description. Saving persists the appointment and
-/// schedules a 24h-before reminder via `AppointmentsController.add`.
+/// Form to schedule a new appointment, or edit an existing one when
+/// [editing] is provided: pick an existing client, a date and time, and an
+/// optional description. Saving persists the appointment and schedules a
+/// 24h-before reminder via `AppointmentsController.add`/`update`.
 class AppointmentFormScreen extends StatefulWidget {
-  const AppointmentFormScreen({super.key});
+  final Appointment? editing;
+
+  const AppointmentFormScreen({super.key, this.editing});
 
   @override
   State<AppointmentFormScreen> createState() => _AppointmentFormScreenState();
@@ -25,11 +28,20 @@ class _AppointmentFormScreenState extends State<AppointmentFormScreen> {
   int? _clientId;
   bool _saving = false;
 
+  bool get _isEditing => widget.editing != null;
+
   @override
   void initState() {
     super.initState();
-    final tomorrow = DateTime.now().add(const Duration(days: 1));
-    _dateTime = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10, 0);
+    final editing = widget.editing;
+    if (editing != null) {
+      _dateTime = editing.dateTime;
+      _clientId = editing.clientId;
+      _descriptionCtrl.text = editing.description ?? '';
+    } else {
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      _dateTime = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10, 0);
+    }
   }
 
   @override
@@ -145,17 +157,29 @@ class _AppointmentFormScreenState extends State<AppointmentFormScreen> {
       }
 
       final description = _descriptionCtrl.text.trim();
-      final appointment = Appointment(
-        clientId: client.id!,
-        dateTime: _dateTime,
-        description: description.isEmpty ? null : description,
-        createdAt: DateTime.now(),
-      );
+      final controller = context.read<AppointmentsController>();
 
-      await context.read<AppointmentsController>().add(
-            appointment,
-            clientName: client.name,
-          );
+      if (_isEditing) {
+        final editing = widget.editing!;
+        final appointment = Appointment(
+          id: editing.id,
+          clientId: client.id!,
+          dateTime: _dateTime,
+          description: description.isEmpty ? null : description,
+          notificationId: editing.notificationId,
+          createdAt: editing.createdAt,
+          status: editing.status,
+        );
+        await controller.update(appointment, clientName: client.name);
+      } else {
+        final appointment = Appointment(
+          clientId: client.id!,
+          dateTime: _dateTime,
+          description: description.isEmpty ? null : description,
+          createdAt: DateTime.now(),
+        );
+        await controller.add(appointment, clientName: client.name);
+      }
       if (mounted) Navigator.of(context).pop(true);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -173,7 +197,7 @@ class _AppointmentFormScreenState extends State<AppointmentFormScreen> {
     final clients = context.watch<ClientsController>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Agendar Cita')),
+      appBar: AppBar(title: Text(_isEditing ? 'Editar Cita' : 'Agendar Cita')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -241,7 +265,7 @@ class _AppointmentFormScreenState extends State<AppointmentFormScreen> {
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _saving ? null : _save,
-              child: const Text('Guardar'),
+              child: Text(_isEditing ? 'Guardar cambios' : 'Guardar'),
             ),
           ],
         ),
