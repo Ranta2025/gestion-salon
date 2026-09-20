@@ -150,6 +150,15 @@ class Client {
       );
 }
 
+enum AppointmentStatus { scheduled, cancelled, completed }
+
+extension AppointmentStatusX on AppointmentStatus {
+  String get dbValue => name;
+
+  static AppointmentStatus fromDb(String value) =>
+      AppointmentStatus.values.byName(value);
+}
+
 /// A scheduled salon appointment (client + date/time + optional note).
 ///
 /// `clientName` is a join-time display field, populated by read queries,
@@ -163,6 +172,7 @@ class Appointment {
   final String? description;
   final int? notificationId;
   final DateTime createdAt;
+  final AppointmentStatus status;
 
   // Display-only join field.
   final String? clientName;
@@ -174,6 +184,7 @@ class Appointment {
     this.description,
     this.notificationId,
     required this.createdAt,
+    this.status = AppointmentStatus.scheduled,
     this.clientName,
   });
 
@@ -184,6 +195,7 @@ class Appointment {
         'description': description,
         'notification_id': notificationId,
         'created_at': DateHelpers.dateTimeKey(createdAt),
+        'status': status.dbValue,
       };
 
   factory Appointment.fromMap(Map<String, Object?> map) => Appointment(
@@ -193,6 +205,7 @@ class Appointment {
         description: map['description'] as String?,
         notificationId: map['notification_id'] as int?,
         createdAt: DateTime.parse(map['created_at'] as String),
+        status: AppointmentStatusX.fromDb(map['status'] as String),
         clientName: map['client_name'] as String?,
       );
 
@@ -203,6 +216,7 @@ class Appointment {
     String? description,
     int? notificationId,
     DateTime? createdAt,
+    AppointmentStatus? status,
     String? clientName,
   }) =>
       Appointment(
@@ -212,6 +226,7 @@ class Appointment {
         description: description ?? this.description,
         notificationId: notificationId ?? this.notificationId,
         createdAt: createdAt ?? this.createdAt,
+        status: status ?? this.status,
         clientName: clientName ?? this.clientName,
       );
 }

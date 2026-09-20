@@ -342,6 +342,133 @@ void main() {
     await v1Db.close();
   });
 
+  test(
+      'upgrading a version-2 database adds the status column and defaults '
+      'existing rows to scheduled', () async {
+    // `singleInstance: false` so this doesn't collide with (or reuse) the
+    // in-memory database already opened by `setUp` at the same path.
+    final v2Db = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 2,
+        singleInstance: false,
+        onCreate: (db, _) => AppDatabase.createV2SchemaForTest(db),
+      ),
+    );
+    AppDatabase.debugSetDatabase(v2Db);
+
+    final clientId = await clients.insert(
+      Client(name: 'Pre-migration client', createdAt: DateTime.now()),
+    );
+    final appointmentId = await v2Db.insert('appointments', {
+      'client_id': clientId,
+      'date_time': DateHelpers.dateTimeKey(DateTime(2026, 9, 22, 10)),
+      'description': null,
+      'notification_id': null,
+      'created_at': DateHelpers.dateTimeKey(DateTime.now()),
+    });
+
+    // Pre-migration: `status` must not exist yet on a v2 database.
+    await expectLater(
+      v2Db.rawQuery('SELECT status FROM appointments'),
+      throwsA(isA<DatabaseException>()),
+    );
+
+    await AppDatabase.upgradeSchemaForTest(v2Db, 2);
+
+    // Post-migration: the existing row defaults to 'scheduled'.
+    final migrated = await appointments.byId(appointmentId);
+    expect(migrated, isNotNull);
+    expect(migrated!.status, AppointmentStatus.scheduled);
+
+    await v2Db.close();
+  });
+
+  test('all returns every appointment regardless of status, newest first',
+      () async {
+    final clientId = await clients.insert(
+      Client(name: 'Elena', createdAt: DateTime.now()),
+    );
+    final day = DateTime(2026, 9, 20, 9);
+
+    final pastId = await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: day.subtract(const Duration(days: 10)),
+        createdAt: DateTime.now(),
+      ),
+    );
+    final futureId = await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: day.add(const Duration(days: 5)),
+        createdAt: DateTime.now(),
+      ),
+    );
+    final cancelledId = await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: day.add(const Duration(days: 2)),
+        status: AppointmentStatus.cancelled,
+        createdAt: DateTime.now(),
+      ),
+    );
+    final completedId = await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: day.subtract(const Duration(days: 1)),
+        status: AppointmentStatus.completed,
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    final result = await appointments.all();
+
+    expect(result, hasLength(4));
+    expect(
+      result.map((a) => a.id),
+      [futureId, cancelledId, completedId, pastId],
+    );
+  });
+
+  test(
+      'upcoming excludes future appointments that are cancelled or '
+      'completed', () async {
+    final clientId = await clients.insert(
+      Client(name: 'Fabián', createdAt: DateTime.now()),
+    );
+    final reference = DateTime(2026, 9, 20, 9);
+
+    final scheduledId = await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: reference.add(const Duration(days: 1)),
+        createdAt: DateTime.now(),
+      ),
+    );
+    await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: reference.add(const Duration(days: 2)),
+        status: AppointmentStatus.cancelled,
+        createdAt: DateTime.now(),
+      ),
+    );
+    await appointments.insert(
+      Appointment(
+        clientId: clientId,
+        dateTime: reference.add(const Duration(days: 3)),
+        status: AppointmentStatus.completed,
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    final result = await appointments.upcoming(from: reference);
+
+    expect(result, hasLength(1));
+    expect(result.single.id, scheduledId);
+  });
+
   test('date helpers produce lexicographic-sortable keys', () {
     final a = DateTime(2026, 1, 5, 9, 30);
     final b = DateTime(2026, 1, 5, 18, 0);

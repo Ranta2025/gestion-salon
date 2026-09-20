@@ -37,15 +37,26 @@ class AppointmentRepository {
     return Appointment.fromMap(rows.first);
   }
 
-  /// Appointments at or after [from] (default: now), ordered chronologically
-  /// ascending — feeds the appointments list/reminder enumeration.
+  /// Scheduled appointments at or after [from] (default: now), ordered
+  /// chronologically ascending — feeds the appointments list/reminder
+  /// enumeration. A cancelled or completed appointment is excluded even if
+  /// its date is still in the future.
   Future<List<Appointment>> upcoming({DateTime? from}) async {
     final db = await AppDatabase.database;
     final reference = from ?? DateTime.now();
     final rows = await db.rawQuery(
-      '$_select WHERE a.date_time >= ? ORDER BY a.date_time ASC',
+      "$_select WHERE a.date_time >= ? AND a.status = 'scheduled' "
+      'ORDER BY a.date_time ASC',
       [DateHelpers.dateTimeKey(reference)],
     );
+    return rows.map(Appointment.fromMap).toList();
+  }
+
+  /// Every appointment regardless of status or date, newest first — feeds
+  /// the full history view.
+  Future<List<Appointment>> all() async {
+    final db = await AppDatabase.database;
+    final rows = await db.rawQuery('$_select ORDER BY a.date_time DESC');
     return rows.map(Appointment.fromMap).toList();
   }
 }

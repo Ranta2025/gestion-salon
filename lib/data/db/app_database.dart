@@ -10,7 +10,7 @@ class AppDatabase {
   AppDatabase._();
 
   static const String _dbName = 'gestion_salon.db';
-  static const int _dbVersion = 2;
+  static const int _dbVersion = 3;
 
   static Database? _instance;
 
@@ -45,6 +45,34 @@ class AppDatabase {
   static Future<void> upgradeSchemaForTest(Database db, int oldVersion) =>
       _onUpgrade(db, oldVersion, _dbVersion);
 
+  /// Visible for testing: builds the schema of a version-2 database (i.e.
+  /// after the `appointments` table existed but before its `status` column
+  /// did), so migration tests can simulate an existing install and then
+  /// exercise the real v2->v3 upgrade path. `_onCreate` always includes
+  /// `status` now, so this can't just delegate to it for `appointments`
+  /// like [createSchemaForTest] does — instead it recreates the table by
+  /// hand, mirroring its pre-status shape (same trick [createV1SchemaForTest]
+  /// uses: build everything else via `_onCreate`, then drop and rebuild just
+  /// the one table that needs an earlier shape).
+  static Future<void> createV2SchemaForTest(Database db) async {
+    await _onCreate(db, 2);
+    await db.execute('DROP INDEX IF EXISTS idx_appointments_date_time');
+    await db.execute('DROP TABLE IF EXISTS appointments');
+    await db.execute('''
+      CREATE TABLE appointments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id INTEGER NOT NULL REFERENCES clients(id),
+        date_time TEXT NOT NULL,
+        description TEXT,
+        notification_id INTEGER,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_appointments_date_time ON appointments(date_time)',
+    );
+  }
+
   static Future<Database> _open() async {
     final dir = await getApplicationDocumentsDirectory();
     final path = p.join(dir.path, _dbName);
@@ -72,6 +100,18 @@ class AppDatabase {
       ''');
       await db.execute(
         'CREATE INDEX idx_appointments_date_time ON appointments(date_time)',
+      );
+    }
+    if (oldVersion < 3) {
+      // No `CHECK` constraint here, unlike `_onCreate`'s `status` column:
+      // `ALTER TABLE ... ADD COLUMN` can't reliably carry a `CHECK`
+      // constraint referencing the new column across the SQLite versions
+      // sqflite bundles. Dart-level enum validation (`AppointmentStatusX
+      // .fromDb`) is the safety net on this migration path instead — an
+      // intentional, accepted asymmetry with the fresh-install schema.
+      await db.execute(
+        "ALTER TABLE appointments ADD COLUMN status TEXT NOT NULL "
+        "DEFAULT 'scheduled'",
       );
     }
   }
@@ -138,7 +178,9 @@ class AppDatabase {
         date_time TEXT NOT NULL,
         description TEXT,
         notification_id INTEGER,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'scheduled'
+          CHECK(status IN ('scheduled','cancelled','completed'))
       )
     ''');
 
