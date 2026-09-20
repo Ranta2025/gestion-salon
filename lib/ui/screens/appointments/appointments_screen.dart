@@ -7,8 +7,9 @@ import '../../../data/models/models.dart';
 import '../../../state/appointments_controller.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/ios_card.dart';
+import 'appointment_form_screen.dart';
 
-enum _AppointmentAction { complete, cancel, delete }
+enum _AppointmentAction { complete, edit, cancel, delete }
 
 /// Appointment history: every appointment regardless of status, newest
 /// first (as returned by `AppointmentsController.history`). Tapping a row
@@ -85,6 +86,14 @@ class AppointmentsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 _ActionTile(
+                  icon: Icons.edit_outlined,
+                  label: 'Editar cita',
+                  color: AppColors.accentDeep,
+                  onTap: () =>
+                      Navigator.pop(context, _AppointmentAction.edit),
+                ),
+                const SizedBox(height: 8),
+                _ActionTile(
                   icon: Icons.event_busy_outlined,
                   label: 'Cancelar cita',
                   color: AppColors.expenseDeep,
@@ -113,12 +122,26 @@ class AppointmentsScreen extends StatelessWidget {
 
     switch (action) {
       case _AppointmentAction.complete:
-        // TODO(T3): replace with the real amount-entry dialog (task
-        // citas-editar-y-cobro T3). 0.01 is a placeholder only — it's the
-        // smallest value that satisfies `movements.amount CHECK(amount >
-        // 0)`, so the flow keeps working (and inserts a real, if wrong,
-        // Movement) until T3 wires up the actual amount entry.
-        await controller.complete(id, amountCharged: 0.01);
+        final amount = await _promptAmount(context);
+        if (amount == null || !context.mounted) return;
+        try {
+          await controller.complete(id, amountCharged: amount);
+        } catch (_) {
+          if (context.mounted) {
+            _showError(
+              context,
+              'No se pudo registrar el cobro. Intentá de nuevo.',
+            );
+          }
+        }
+        break;
+      case _AppointmentAction.edit:
+        await Navigator.of(context).push(
+          MaterialPageRoute<bool>(
+            builder: (_) => AppointmentFormScreen(editing: appointment),
+            fullscreenDialog: true,
+          ),
+        );
         break;
       case _AppointmentAction.cancel:
         await controller.cancel(id);
@@ -148,6 +171,63 @@ class AppointmentsScreen extends StatelessWidget {
         if (confirmed == true) await controller.delete(id);
         break;
     }
+  }
+
+  /// Amount-entry dialog shown before marking an appointment as completed —
+  /// the charged amount becomes an income `Movement`
+  /// (`CHECK(amount > 0)`), so the form rejects empty/non-numeric/zero/
+  /// negative input. Returns the parsed amount, or `null` if cancelled.
+  Future<double?> _promptAmount(BuildContext context) {
+    final amountCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    return showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('¿Cuánto cobraste?'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: amountCtrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Monto cobrado',
+              hintText: '0.00',
+              prefixIcon: Icon(Icons.payments_outlined),
+            ),
+            validator: (value) {
+              final raw = (value ?? '').trim().replaceAll(',', '.');
+              final amount = double.tryParse(raw);
+              if (amount == null || amount <= 0) {
+                return 'Ingresá un monto válido';
+              }
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (!(formKey.currentState?.validate() ?? false)) return;
+              final raw = amountCtrl.text.trim().replaceAll(',', '.');
+              Navigator.pop(dialogContext, double.parse(raw));
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showError(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   @override
