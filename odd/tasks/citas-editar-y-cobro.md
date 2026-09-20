@@ -150,3 +150,26 @@ creates a linked income Movement automatically. Matches the existing
 design system throughout.
 **Not yet verified**: no real native build has been run on this branch —
 same caveat as every other feature this session.
+
+Gentle AI review of the full branch (5 files vs. `master`): user granted
+consent, `review-reliability` found two CRITICALs. (1) A false-positive
+premise on inspection — `clientName` was claimed to be "lost" on
+`update()`, but it's a display-only join field never written by
+`Appointment.toMap()`, so nothing was actually lost in the DB; still
+fixed the underlying code smell (the reconstructed `Appointment` was
+using `appointment.clientName`, always `null` from the form, instead of
+the method's own fresher `clientName` parameter). (2) A real one:
+`complete()` did the income `Movement` insert and the appointment's
+status update as two separate, unguarded writes — a failure between them
+could leave an orphaned `Movement` with the appointment still
+`scheduled`, and the UI's retry-on-error path would then double-insert
+the charge on a successful retry. Fixed by wrapping both writes in one
+`Database.transaction()` (added an optional `DatabaseExecutor? executor`
+param to `AppointmentRepository.update()` and `MovementRepository
+.insert()` so both can share one transaction), commit `617a2ab`. 31/31
+tests, analyze clean after the fix.
+Re-validation hit the same `recovery_authorization_required` gate
+already seen twice on this branch's predecessor features (the fix
+touched 2 repository files outside the originally-reviewed manifest,
+widening scope) — left unacknowledged, consistent with that established
+precedent; the fix itself is independently verified.
