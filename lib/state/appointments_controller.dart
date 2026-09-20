@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../data/db/app_database.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/appointment_repository.dart';
 import '../../data/repositories/movement_repository.dart';
@@ -116,7 +117,12 @@ class AppointmentsController extends ChangeNotifier {
         notificationId: notificationId,
         createdAt: previous.createdAt,
         status: previous.status,
-        clientName: appointment.clientName,
+        // `clientName` is a display-only join field (never persisted —
+        // see Appointment.toMap), but keep it accurate in this in-memory
+        // object anyway: the caller's `clientName` param is the fresh,
+        // possibly-changed value, unlike `appointment.clientName`, which
+        // the form never sets and would otherwise silently read null.
+        clientName: clientName,
       ),
     );
     await refresh();
@@ -134,16 +140,32 @@ class AppointmentsController extends ChangeNotifier {
   Future<void> cancel(int id) => _setStatus(id, AppointmentStatus.cancelled);
 
   /// Marks appointment [id] as completed and records the real business
-  /// event behind it: the client was charged [amountCharged] for it. Unlike
-  /// the notification-scheduling failures elsewhere in this file, the
-  /// `Movement` insert below is NOT best-effort — if it throws, the
-  /// exception propagates and the appointment is left `scheduled`. Silently
-  /// swallowing a failed charge insert here would complete the appointment
-  /// with no record of the money it was supposed to bring in, which is
-  /// exactly the bug this feature exists to prevent.
+  /// event behind it: the client was charged [amountCharged] for it. The
+  /// `Movement` insert and the appointment's status update run inside one
+  /// database transaction — either both commit or neither does. Without
+  /// that, a failure between the two writes (transient DB error, app kill)
+  /// could leave a `Movement` inserted while the appointment stays
+  /// `scheduled`; the UI's retry-on-failure path would then insert a
+  /// *second* `Movement` for the same charge once the retry succeeded,
+  /// silently double-counting income. Unlike the notification-scheduling
+  /// failures elsewhere in this file, this write is NOT best-effort — if
+  /// the transaction throws, it propagates and the appointment is left
+  /// `scheduled` with no `Movement` recorded at all, so a retry is always
+  /// safe.
   Future<void> complete(int id, {required double amountCharged}) async {
     final appointment = await _repository.byId(id);
     if (appointment == null) return;
+
+    // Best-effort, same as elsewhere in this file: a notification-cancel
+    // failure must not block completing the appointment, and it doesn't
+    // need to be atomic with the DB writes below.
+    if (appointment.notificationId != null) {
+      try {
+        await _notificationService.cancelReminder(appointment.notificationId!);
+      } catch (_) {
+        // No live reminder will be cancelled, but completion proceeds.
+      }
+    }
 
     final noteBuffer = StringBuffer(
       'Cita – ${appointment.clientName ?? 'cliente'}',
@@ -153,18 +175,35 @@ class AppointmentsController extends ChangeNotifier {
       noteBuffer.write(' ($description)');
     }
 
-    await _movementRepository.insert(
-      Movement(
-        type: MovementType.income,
-        amount: amountCharged,
-        date: appointment.dateTime,
-        clientId: appointment.clientId,
-        note: noteBuffer.toString(),
-        createdAt: DateTime.now(),
-      ),
-    );
+    final db = await AppDatabase.database;
+    await db.transaction((txn) async {
+      await _movementRepository.insert(
+        Movement(
+          type: MovementType.income,
+          amount: amountCharged,
+          date: appointment.dateTime,
+          clientId: appointment.clientId,
+          note: noteBuffer.toString(),
+          createdAt: DateTime.now(),
+        ),
+        executor: txn,
+      );
+      await _repository.update(
+        Appointment(
+          id: appointment.id,
+          clientId: appointment.clientId,
+          dateTime: appointment.dateTime,
+          description: appointment.description,
+          notificationId: null,
+          createdAt: appointment.createdAt,
+          status: AppointmentStatus.completed,
+          clientName: appointment.clientName,
+        ),
+        executor: txn,
+      );
+    });
 
-    await _setStatus(id, AppointmentStatus.completed);
+    await refresh();
   }
 
   /// Persists [status] for the appointment [id]. A `scheduled` appointment

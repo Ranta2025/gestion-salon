@@ -1,3 +1,5 @@
+import 'package:sqflite/sqflite.dart';
+
 import '../../core/utils/date_helpers.dart';
 import '../db/app_database.dart';
 import '../models/models.dart';
@@ -32,8 +34,12 @@ class MovementRepository {
     LEFT JOIN clients c ON m.client_id = c.id
   ''';
 
-  Future<int> insert(Movement movement) async {
-    final db = await AppDatabase.database;
+  /// [executor] lets a caller run this insert inside an existing
+  /// transaction (e.g. completing an appointment pairs this with the
+  /// appointment's status update so both writes commit or roll back
+  /// together, never leaving an orphaned income record behind).
+  Future<int> insert(Movement movement, {DatabaseExecutor? executor}) async {
+    final db = executor ?? await AppDatabase.database;
     final map = movement.toMap()..remove('id');
     return db.insert('movements', map);
   }

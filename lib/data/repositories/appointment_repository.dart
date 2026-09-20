@@ -1,3 +1,5 @@
+import 'package:sqflite/sqflite.dart';
+
 import '../../core/utils/date_helpers.dart';
 import '../db/app_database.dart';
 import '../models/models.dart';
@@ -9,14 +11,17 @@ class AppointmentRepository {
     LEFT JOIN clients c ON a.client_id = c.id
   ''';
 
-  Future<int> insert(Appointment appointment) async {
-    final db = await AppDatabase.database;
+  Future<int> insert(Appointment appointment, {DatabaseExecutor? executor}) async {
+    final db = executor ?? await AppDatabase.database;
     final map = appointment.toMap()..remove('id');
     return db.insert('appointments', map);
   }
 
-  Future<void> update(Appointment appointment) async {
-    final db = await AppDatabase.database;
+  /// [executor] lets a caller run this update inside an existing
+  /// transaction (e.g. `AppointmentsController.complete()` pairs this with
+  /// a `Movement` insert so both writes commit or roll back together).
+  Future<void> update(Appointment appointment, {DatabaseExecutor? executor}) async {
+    final db = executor ?? await AppDatabase.database;
     await db.update(
       'appointments',
       appointment.toMap()..remove('created_at'),

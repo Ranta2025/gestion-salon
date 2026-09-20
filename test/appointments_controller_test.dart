@@ -51,7 +51,7 @@ class _FakeNotificationService extends NotificationService {
 /// leave the appointment marked as completed.
 class _ThrowingMovementRepository extends MovementRepository {
   @override
-  Future<int> insert(Movement movement) async {
+  Future<int> insert(Movement movement, {DatabaseExecutor? executor}) async {
     throw Exception('disk failure: could not insert movement');
   }
 }
