@@ -18,7 +18,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 1400), () {
+    Future.delayed(const Duration(milliseconds: 2200), () {
       if (!mounted) return;
       Navigator.of(
         context,
@@ -54,12 +54,13 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             const SizedBox(height: 28),
             SizedBox(
-              width: 160,
+              width: 180,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: LinearProgressIndicator(
+                  minHeight: 8,
                   color: AppColors.accentDeep,
-                  backgroundColor: AppColors.accent.withValues(alpha: 0.25),
+                  backgroundColor: AppColors.accent.withValues(alpha: 0.4),
                 ),
               ),
             ),
