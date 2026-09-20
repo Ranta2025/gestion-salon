@@ -5,6 +5,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_helpers.dart';
 import '../../../data/models/models.dart';
 import '../../../state/appointments_controller.dart';
+import '../../../state/dashboard_controller.dart';
+import '../../../state/movements_controller.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/ios_card.dart';
 import 'appointment_form_screen.dart';
@@ -126,6 +128,15 @@ class AppointmentsScreen extends StatelessWidget {
         if (amount == null || !context.mounted) return;
         try {
           await controller.complete(id, amountCharged: amount);
+          if (!context.mounted) return;
+          // complete() inserts the income Movement straight through the
+          // repository, bypassing MovementsController/DashboardController —
+          // same as MovementFormScreen._save() already does for a manual
+          // movement, refresh them explicitly so Movimientos/Inicio show it
+          // immediately instead of only after their next unrelated refresh.
+          await context.read<MovementsController>().refresh();
+          if (!context.mounted) return;
+          await context.read<DashboardController>().refresh();
         } catch (_) {
           if (context.mounted) {
             _showError(
